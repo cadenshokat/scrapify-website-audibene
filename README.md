@@ -1,5 +1,5 @@
 # Scrapify: Ad Intelligence Suite  
-*A sleek, minimal web app dashboard for scraping, analyzing, and optimizing native ad campaigns.*
+*A sleek, minimal web app dashboard for ad scraping, analyzing, and optimizing native ad campaigns.*
 
 ---
 
