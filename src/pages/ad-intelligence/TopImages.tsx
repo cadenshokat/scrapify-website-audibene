@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client"
 import { Image as ImageIcon } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import LoadingSpinner from "@/components/LoadingSpinner"
+import { useRegion } from "@/hooks/useRegion"
 
 interface TopImage {
   source_id: string | null
@@ -21,28 +22,31 @@ export default function TopImages() {
   const [year, setYear] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+  const { region } = useRegion()
+  const german = region == 'DE'
 
   const fetchWeekYearOptions = async () => {
     try {
       const { data, error } = await supabase
         .from('topWeeklyImages')
         .select('week, year')
+        .eq('region', region)
+        .gte('week', 20)
+        .order('year', { ascending: false })
+        .order('week', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) throw error
 
-      const weekSet = new Set<number>()
-      const yearSet = new Set<number>()
-      data?.forEach(r => {
-        weekSet.add(r.week)
-        yearSet.add(r.year)
-      })
+      setYear(data.year);
+      setWeek(data.week);
 
-      const sortedWeeks = Array.from(weekSet).sort((a, b) => b - a)
-      const sortedYears = Array.from(yearSet).sort((a, b) => b - a)
-
-      setWeeks(sortedWeeks)
-      setYears(sortedYears)
-      if (!year && sortedYears.length) setYear(sortedYears[0])
-      if (!week && sortedWeeks.length) setWeek(sortedWeeks[0])
+      const weekArr: number[] = [];
+      for (let w = 25; w <= data.week; w++) {
+        weekArr.push(w);
+      }
+      setWeeks(weekArr.reverse());
+      setYears([data.year]);
     } catch (e) {
       console.error(e)
       toast({ title: 'Error', description: 'Failed to load week options', variant: 'destructive' })
@@ -56,6 +60,7 @@ export default function TopImages() {
       const { data, error } = await supabase
         .from('topWeeklyImages')
         .select('source_id, image_url, frequency')
+        .eq('region', region)
         .eq('week', week)
         .eq('year', year)
         .order('frequency', { ascending: false })
@@ -73,19 +78,19 @@ export default function TopImages() {
 
   useEffect(() => {
     fetchWeekYearOptions()
-  }, [])
+  }, [region])
 
   useEffect(() => {
     fetchItems()
-  }, [week, year])
+  }, [region, week, year])
 
   if (loading) return <LoadingSpinner />
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#ffffff]">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Top Images</h1>
+          <h1 className="text-3xl font-bold">{german ? 'Top Bilder' : 'Top Images'}</h1>
         </div>
         <div className="flex gap-2">
           <Select value={year?.toString() || ''} onValueChange={v => setYear(+v)}>
@@ -97,10 +102,10 @@ export default function TopImages() {
           <Select value={week?.toString() || ''} onValueChange={v => setWeek(+v)}>
             <SelectTrigger className="w-32"><SelectValue placeholder="Week"/></SelectTrigger>
             <SelectContent>
-              {weeks.map(w => <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>)}
+              {weeks.map(w => <SelectItem key={w} value={w.toString()}>{german ? 'Woche' : 'Week'} {w}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button onClick={fetchItems} variant="outline">Refresh</Button>
+          <Button onClick={fetchItems} variant="outline">{german ? 'Aktualisieren' : 'Refresh'}</Button>
         </div>
       </div>
 

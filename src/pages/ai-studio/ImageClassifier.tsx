@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button"
 import { supabase } from "@/integrations/supabase/client"
 import { Eye, Image as ImageIcon, Sparkles } from "lucide-react"
 import LoadingSpinner from "@/components/LoadingSpinner"
+import { useRegion } from "@/hooks/useRegion"
 
 interface ImageData {
-  Id: string
-  "Image Url": string | null
-  Headline: string | null
-  Brand: string | null
-  Platform: string | null
+  id: string
+  image_url: string | null
+  headline: string | null
+  brand: string | null
+  platform: string | null
   aiDescription?: string
 }
 
@@ -22,17 +23,19 @@ const ImageClassifier = () => {
   const [analyzing, setAnalyzing] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  
+  const { region } = useRegion()
+  const german = region == 'DE'
 
   const fetchImages = async () => {
     try {
       setLoading(true)
       const { data, error } = await supabase
         .from('Scrape Data')
-        .select('Id, "Image Url", Headline, Brand, Platform')
-        .not('Image Url', 'is', null)
-        .order('Date', { ascending: false })
-        .limit(20)
+        .select('id, image_url, headline, brand, platform')
+        .eq('region', region)
+        .not('image_url', 'is', null)
+        .order('date', { ascending: false })
+        .limit(40)
 
       if (error) throw error
       setImages(data || [])
@@ -52,7 +55,7 @@ const ImageClassifier = () => {
     
     setTimeout(() => {
       setImages(prev => prev.map(img => 
-        img.Id === imageId 
+        img.id === imageId 
           ? {
               ...img,
               aiDescription: "Professional business setting with modern technology elements. Features clean design with blue and white color scheme. Likely targeting corporate professionals and small business owners. High-quality stock photography with excellent composition and lighting."
@@ -79,9 +82,9 @@ const ImageClassifier = () => {
   if (error) return <div className="p-6 text-red-600">Error: {error}</div>
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#fafafa] bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] bg-[length:20px_20px]">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Image Classifier</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{german ? 'Bildklassifizierer' : 'Image Classifier'}</h1>
       </div>
 
       {/* Stats */}
@@ -90,13 +93,13 @@ const ImageClassifier = () => {
           <div className="flex items-center gap-4 text-sm">
             <Badge variant="outline">
               <ImageIcon className="w-3 h-3 mr-1" />
-              {images.length} Images
+              {images.length} {german ? 'Bilder' : 'Images'}
             </Badge>
             <Badge variant="outline">
               <Sparkles className="w-3 h-3 mr-1" />
-              {images.filter(img => img.aiDescription).length} Analyzed
+              {images.filter(img => img.aiDescription).length} {german ? 'Analysiert' : 'Analyzed'}
             </Badge>
-            <Badge variant="outline">Ready for Classification</Badge>
+            <Badge variant="outline">{german ? 'Bereit zur Klassifizierung' : 'Ready for Classification'}</Badge>
           </div>
         </CardContent>
       </Card>
@@ -104,11 +107,11 @@ const ImageClassifier = () => {
       {/* Images Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {images.map((image) => (
-          <Card key={image.Id} className="overflow-hidden hover:shadow-lg transition-shadow">
+          <Card key={image.id} className="overflow-hidden hover:shadow-lg transition-shadow">
             <div className="aspect-video bg-gray-100 relative">
-              {image["Image Url"] ? (
+              {image.image_url ? (
                 <img 
-                  src={image["Image Url"]} 
+                  src={image.image_url} 
                   alt="Ad image"
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -122,8 +125,8 @@ const ImageClassifier = () => {
               )}
               
               <div className="absolute top-2 right-2">
-                <Badge className={getPlatformColor(image.Platform)}>
-                  {image.Platform || 'Unknown'}
+                <Badge className={getPlatformColor(image.platform)}>
+                  {image.platform || 'Unknown'}
                 </Badge>
               </div>
             </div>
@@ -131,10 +134,10 @@ const ImageClassifier = () => {
             <CardContent className="p-4">
               <div className="space-y-3">
                 <div>
-                  <h3 className="font-medium text-gray-900 truncate" title={image.Headline}>
-                    {image.Headline || 'No headline'}
+                  <h3 className="font-medium text-gray-900 truncate" title={image.headline}>
+                    {image.headline || 'No headline'}
                   </h3>
-                  <p className="text-sm text-gray-500">{image.Brand || 'Unknown Brand'}</p>
+                  <p className="text-sm text-gray-500">{image.brand || 'Unknown Brand'}</p>
                 </div>
                 
                 {image.aiDescription && (
@@ -151,12 +154,12 @@ const ImageClassifier = () => {
                 
                 <div className="pt-2">
                   <Button 
-                    onClick={() => analyzeImage(image.Id)}
-                    disabled={analyzing.includes(image.Id) || !!image.aiDescription}
+                    onClick={() => analyzeImage(image.id)}
+                    disabled={analyzing.includes(image.id) || !!image.aiDescription}
                     size="sm"
                     className="w-full bg-primary hover:bg-primary-light"
                   >
-                    {analyzing.includes(image.Id) ? (
+                    {analyzing.includes(image.id) ? (
                       <>
                         <Sparkles className="w-3 h-3 mr-2 animate-spin" />
                         Analyzing...
@@ -164,12 +167,12 @@ const ImageClassifier = () => {
                     ) : image.aiDescription ? (
                       <>
                         <Eye className="w-3 h-3 mr-2" />
-                        Analyzed
+                        {german ? 'Analysiert' : 'Analyzed'}
                       </>
                     ) : (
                       <>
                         <Sparkles className="w-3 h-3 mr-2" />
-                        Analyze Image
+                        {german ? 'Bild analysieren' : 'Analyze Image'}
                       </>
                     )}
                   </Button>
@@ -183,7 +186,7 @@ const ImageClassifier = () => {
       {/* Refresh Button */}
       <div className="text-center">
         <Button variant="outline" onClick={fetchImages}>
-          Load More Images
+          {german ? 'Weitere Bilder laden' : 'Load More Images'}
         </Button>
       </div>
     </div>

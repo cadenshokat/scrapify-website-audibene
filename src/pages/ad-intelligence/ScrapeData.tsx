@@ -10,16 +10,19 @@ import LoadingSpinner from "@/components/LoadingSpinner"
 import SelectButton from "@/components/SelectButton"
 import { ArrowUpRight } from "lucide-react"
 import { useSelectedHeadlines } from "@/hooks/useSelectedHeadlines"
+import { FormatNumber } from "@/utils/FormatNumber"
+import { useRegion } from "@/hooks/useRegion"
+import { Separator } from "@/components/ui/separator"
 
 interface ScrapeDataItem {
-  Id: string
-  Date: string | null
-  Position: number | null
-  Headline: string | null
-  "Ad Url": string | null
-  "Image Url": string | null
-  Brand: string | null
-  Platform: string | null
+  id: string
+  date: string | null
+  position: number | null
+  headline: string | null
+  ad_url: string | null
+  image_url: string | null
+  brand: string | null
+  platform: string | null
 }
 
 const ScrapeData = () => {
@@ -30,32 +33,41 @@ const ScrapeData = () => {
   const [error, setError] = useState<string | null>(null)
   const itemsPerPage = 50
 
+  const {region} = useRegion()
+  const german = region == 'DE'
+
   const { selectedHeadlines, loading: loadingSelected, refetch: refetchSelected } = useSelectedHeadlines()
 
   const isRowSelected = (id: string) =>
     selectedHeadlines.some(sh => sh.source_id === id)
 
   useEffect(() => {
+    setCurrentPage(1)
+  }, [region])
+
+
+  useEffect(() => {
     fetchScrapeData()
-  }, [currentPage])
+  }, [region, currentPage])
 
   const fetchScrapeData = async () => {
     try {
       setLoading(true)
       
-      // Get total count for all data
       const { count, error: countError } = await supabase
         .from('Scrape Data')
         .select('*', { count: 'exact', head: true })
+        .eq('region', region)
 
       if (countError) throw countError
       setTotalCount(count || 0)
 
-      // Get paginated data
       const { data, error } = await supabase
         .from('Scrape Data')
         .select('*')
-        .order('Date', { ascending: false })
+        .eq('region', region)
+        .order('date', { ascending: false })
+        .order('position', {ascending: false})
         .range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1)
 
       if (error) throw error
@@ -85,92 +97,92 @@ const ScrapeData = () => {
   if (error) return <div className="p-6 text-red-600">Error: {error}</div>
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#ffffff]">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Scrape Data</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{german ? 'Gekratzte Anzeigen' : 'Scraped Ads'}</h1>
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] items-center mt-4 gap-4">
+        <div>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-primary">{totalCount}</div>
-            <div className="text-sm text-gray-600">Total Ads</div>
+            <div className="text-2xl font-bold text-primary">{FormatNumber(totalCount)}</div>
+            <div className="text-sm text-gray-600">{german ? 'Anzeigen insgesamt' : 'Total Ads'}</div>
           </CardContent>
-        </Card>
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary-light">
               5
             </div>
-            <div className="text-sm text-gray-600">Platforms</div>
+            <div className="text-sm text-gray-600">{german ? 'Plattformen' : 'Platforms'}</div>
           </CardContent>
-        </Card>
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary-dark">
-              {new Set(scrapeData.map(item => item.Brand).filter(Boolean)).size}
+              {new Set(scrapeData.map(item => item.brand).filter(Boolean)).size}
             </div>
-            <div className="text-sm text-gray-600">Brands</div>
+            <div className="text-sm text-gray-600">{german ? 'Marken' : 'Brands'}</div>
           </CardContent>
-        </Card>
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary">
-              Page {currentPage} of {totalPages}
+              {german ? `Seite ${currentPage} von ${totalPages}` : `Page ${currentPage} of ${totalPages}`}
             </div>
-            <div className="text-sm text-gray-600">Current Page</div>
+            <div className="text-sm text-gray-600">{german ? 'Aktuelle Seite' : 'Current Page'}</div>
           </CardContent>
-        </Card>
+        </div>
       </div>
 
+      <Separator />
       {/* Data Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Ad Data</CardTitle>
-        </CardHeader>
+      <div>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Platform</TableHead>
+                <TableHead>{german ? 'Datum' : 'Date'}</TableHead>
+                <TableHead>{german ? 'Plattform' : 'Platform'}</TableHead>
                 <TableHead>Position</TableHead>
-                <TableHead>Headline</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>{german ? 'Überschrift' : 'Headline'}</TableHead>
+                <TableHead>{german ? 'Marke' : 'Brand'}</TableHead>
+                <TableHead>{german ? 'Aktionen' : 'Actions'}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {scrapeData.map((item) => (
-                <TableRow key={item.Id} className="cursor-pointer hover:bg-gray-50">
-                  <TableCell className="font-mono text-sm">{item.Id}</TableCell>
-                  <TableCell>{item.Date ? new Date(item.Date).toLocaleDateString() : 'N/A'}</TableCell>
+                <TableRow key={item.id} className="cursor-pointer hover:bg-gray-50">
+                  <TableCell>{item.date ? new Date(item.date).toLocaleDateString() : 'N/A'}</TableCell>
                   <TableCell>
-                    <Badge className={getPlatformColor(item.Platform)}>
-                      {item.Platform || 'Unknown'}
+                    <Badge className={getPlatformColor(item.platform)}>
+                      {item.platform || 'Unknown'}
                     </Badge>
                   </TableCell>
-                  <TableCell>{item.Position || 'N/A'}</TableCell>
-                  <TableCell className="max-w-md whitespace-normal break-words" title={item.Headline}>
-                    {item.Headline || 'No headline'}
+                  <TableCell>{item.position || 'N/A'}</TableCell>
+                  <TableCell className="max-w-md whitespace-normal break-words" title={item.headline}>
+                    {item.headline || 'No headline'}
                   </TableCell>
-                  <TableCell>{item.Brand || 'Unknown'}</TableCell>
+                  <TableCell>{item.brand || 'Unknown'}</TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <SelectButton
-                        headline={item.Headline || ''}
+                        headline={item.headline || ''}
                         sourceTable="scrape_data"
-                        sourceId={item.Id}
-                        brand={item.Brand || undefined}
-                        isSelected={isRowSelected(item.Id)}
+                        sourceId={item.id}
+                        region={region}
+                        brand={item.brand || undefined}
+                        isSelected={isRowSelected(item.id)}
                         onSelectionChange={refetchSelected}
 
                       />
-                      {item["Ad Url"] && (
+                      {item.ad_url && (
                         <Button variant="outline" size="sm" asChild>
-                          <a href={item["Ad Url"]} target="_blank" rel="noopener noreferrer">
+                          <a href={item.ad_url} target="_blank" rel="noopener noreferrer">
                             <ArrowUpRight className="w-6 h-4" />
                           </a>
                         </Button>
@@ -226,7 +238,7 @@ const ScrapeData = () => {
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }

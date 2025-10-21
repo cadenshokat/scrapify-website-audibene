@@ -11,18 +11,32 @@ import SelectButton from "@/components/SelectButton"
 import LoadingSpinner from "@/components/LoadingSpinner"
 import { useSelectedHeadlines } from "@/hooks/useSelectedHeadlines"
 import { useToast } from "@/hooks/use-toast"  
+import { FormatNumber } from "@/utils/FormatNumber"
+import { useRegion } from "@/hooks/useRegion"
+import { Separator } from "@/components/ui/separator"
 
 interface AnstrexDataItem {
-  Id: string
-  Brand: string | null
-  Headline: string
-  Gravity: number | null
-  Date: string | null
-  Network: string | null
-  Duration: number | null
-  "Image Url": string | null
-  Strength: number | null
+  id: string
+  brand: string | null
+  headline: string
+  gravity: number | null
+  date: string | null
+  network: string | null
+  duration: number | null
+  image_url: string | null
+  strength: number | null
+  landing_page_url: string | null
 }
+
+const normalizeUrl = (url: string) =>
+  /^https?:\/\//i.test(url) ? url : `https://${url}`;
+
+const openIfUrl = (url: string | null | undefined) => {
+  if (!url) return;
+  const href = normalizeUrl(url);
+  window.open(href, "_blank", "noopener,noreferrer");
+};
+
 
 const AnstrexData = () => {
   const [anstrexData, setAnstrexData] = useState<AnstrexDataItem[]>([])
@@ -34,29 +48,33 @@ const AnstrexData = () => {
   const [week,  setWeek]  = useState<number|null>(null)
   const [year,  setYear]  = useState<number|null>(null)
 
+  const { region } = useRegion()
+  const german = region == 'DE'
+
   const { toast } = useToast()
 
   const fetchWeekYearOptions = async () => {
     try {
       const { data, error } = await supabase
         .from('Anstrex Data')
-        .select('Week, Year')
+        .select('week, year')
+        .eq('region', region)
+        .gte('week', 20)
+        .order('year', { ascending: false })
+        .order('week', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       if (error) throw error
 
-      const weekSet = new Set<number>()
-      const yearSet = new Set<number>()
-      data?.forEach(r => {
-        weekSet.add(r.Week)
-        yearSet.add(r.Year)
-      })
+      setYear(data.year);
+      setWeek(data.week);
 
-      const sortedWeeks = Array.from(weekSet).sort((a, b) => b - a)
-      const sortedYears = Array.from(yearSet).sort((a, b) => b - a)
-
-      setWeeks(sortedWeeks)
-      setYears(sortedYears)
-      if (sortedYears.length && year === null) setYear(sortedYears[0])
-      if (sortedWeeks.length && week === null) setWeek(sortedWeeks[0])
+      const weekArr: number[] = [];
+      for (let w = 25; w <= data.week; w++) {
+        weekArr.push(w);
+      }
+      setWeeks(weekArr.reverse());
+      setYears([data.year]);
     } catch (e) {
       console.error(e)
       toast({ title: 'Error', description: 'Failed to load week options', variant: 'destructive' })
@@ -75,9 +93,10 @@ const AnstrexData = () => {
       const { data, error } = await supabase
         .from('Anstrex Data')
         .select('*')
-        .eq('Week', week)
-        .eq('Year', year)
-        .order('Strength', { ascending: false })
+        .eq('region', region)
+        .eq('week', week)
+        .eq('year', year)
+        .order('strength', { ascending: false })
         .limit(100)
 
       if (error) throw error
@@ -90,7 +109,7 @@ const AnstrexData = () => {
   }
 
   useEffect(() => { fetchWeekYearOptions() }, [])
-  useEffect(() => { fetchAnstrexData() }, [week, year])
+  useEffect(() => { fetchAnstrexData() }, [week, year, region])
 
   const getGravityColor = (gravity: number | null) => {
     if (!gravity) return "bg-gray-100 text-gray-800"
@@ -113,7 +132,7 @@ const AnstrexData = () => {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Anstrex Data</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{german ? 'Anstrex-Daten' : 'Anstrex Ads'}</h1>
         </div>
         
         <div className="flex gap-2">
@@ -126,109 +145,157 @@ const AnstrexData = () => {
             <Select value={week?.toString() || ''} onValueChange={v => setWeek(+v)}>
               <SelectTrigger className="w-32"><SelectValue placeholder="Week"/></SelectTrigger>
               <SelectContent>
-                {weeks.map(w => <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>)}
+                {weeks.map(w => <SelectItem key={w} value={w.toString()}>{german ? 'Woche' : 'Week'} {w}</SelectItem>)}
               </SelectContent>
             </Select>
         </div>
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] items-center mt-4 gap-4">
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary">{anstrexData.length}</div>
-            <div className="text-sm text-gray-600">Total Ads</div>
+            <div className="text-sm text-gray-600">{german ? 'Anzeigen insgesamt' : 'Total Ads'}</div>
           </CardContent>
-        </Card>
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary-light">
-              {Math.round(anstrexData.reduce((acc, item) => acc + (item.Gravity || 0), 0) / anstrexData.length) || 0}
+              {FormatNumber(Math.round(anstrexData.reduce((acc, item) => acc + (item.gravity || 0), 0) / anstrexData.length)) || 0}
             </div>
-            <div className="text-sm text-gray-600">Avg Gravity</div>
+            <div className="text-sm text-gray-600">{german ? 'Durchschnittliche Schwerkraft' : 'Avg Gravity'}</div>
           </CardContent>
-        </Card>
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary-dark">
-              {Math.round(anstrexData.reduce((acc, item) => acc + (item.Strength || 0), 0) / anstrexData.length) || 0}
+              {FormatNumber(Math.round(anstrexData.reduce((acc, item) => acc + (item.strength || 0), 0) / anstrexData.length)) || 0}
             </div>
-            <div className="text-sm text-gray-600">Avg Strength</div>
+            <div className="text-sm text-gray-600">{german ? 'Durchschnittliche Stärke' : 'Avg Strength'}</div>
           </CardContent>
-        </Card>
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-primary">
-              {new Set(anstrexData.map(item => item.Brand).filter(Boolean)).size}
+              {new Set(anstrexData.map(item => item.brand).filter(Boolean)).size}
             </div>
-            <div className="text-sm text-gray-600">Unique Brands</div>
+            <div className="text-sm text-gray-600">{german ? 'Einzigartige Marken' : 'Unique Brands'}</div>
           </CardContent>
-        </Card>
+        </div>
       </div>
 
+      <Separator />
+
       {/* Data Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Anstrex Ad Intelligence ({week})</CardTitle>
-        </CardHeader>
+      <div>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Headline</TableHead>
-                <TableHead>Gravity</TableHead>
-                <TableHead>Strength</TableHead>
-                <TableHead>Network</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead>{german ? 'Datum' : 'Date'}</TableHead>
+                <TableHead>{german ? 'Marke' : 'Brand'}</TableHead>
+                <TableHead>{german ? 'Überschrift' : 'Headline'}</TableHead>
+                <TableHead>{german ? 'Schwerkraft' : 'Gravity'}</TableHead>
+                <TableHead>{german ? 'Stärke' : 'Strength'}</TableHead>
+                <TableHead>{german ? 'Netzwerk' : 'Network'}</TableHead>
+                <TableHead>{german ? 'Dauer' : 'Duration'}</TableHead>
+                <TableHead>{german ? 'Aktionen' : 'Actions'}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {anstrexData.map((item) => (
-                <TableRow key={item.Id}>
-                  <TableCell className="font-mono text-sm">{item.Id}</TableCell>
-                  <TableCell>{item.Date ? new Date(item.Date).toLocaleDateString() : 'N/A'}</TableCell>
-                  <TableCell>{item.Brand || 'Unknown'}</TableCell>
-                  <TableCell className="max-w-md whitespace-normal break-words" title={item.Headline}>
-                    {item.Headline}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getGravityColor(item.Gravity)}>
-                      {item.Gravity || 'N/A'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={getStrengthColor(item.Strength)}>
-                      {item.Strength || 'N/A'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{item.Network || 'Unknown'}</TableCell>
-                  <TableCell>{item.Duration ? `${item.Duration} days` : 'N/A'}</TableCell>
-                  <TableCell>
-                    <SelectButton
-                      headline={item.Headline}
-                      sourceTable="anstrex_data"
-                      sourceId={item.Id}
-                      brand={item.Brand || undefined}
-                      isSelected={isRowSelected(item.Id)}
-                      onSelectionChange={refetchSelected}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {anstrexData.map((item) => {
+                const hasUrl = !!item.landing_page_url;
+                const onRowClick = () => hasUrl && openIfUrl(item.landing_page_url);
+                const onRowKeyDown = (e: React.KeyboardEvent) => {
+                  if (!hasUrl) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openIfUrl(item.landing_page_url);
+                  }
+                };
+
+                return (
+                  <TableRow
+                    key={item.id}
+                    onClick={onRowClick}
+                    onKeyDown={onRowKeyDown}
+                    role={hasUrl ? "button" : undefined}
+                    tabIndex={hasUrl ? 0 : -1}
+                    className={[
+                      hasUrl ? "cursor-pointer hover:bg-muted/60 focus:bg-muted/60 outline-none" : "",
+                      "transition-colors"
+                    ].join(" ")}
+                    // prevents row navigation when clicking inner interactive elements
+                    onClickCapture={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (
+                        target.closest("button, a, input, [role='button'], [data-stop-row]")
+                      ) {
+                        e.stopPropagation();
+                      }
+                    }}
+                  >
+                    <TableCell>{item.date ? new Date(item.date).toLocaleDateString() : "N/A"}</TableCell>
+                    <TableCell>{item.brand || "Unknown"}</TableCell>
+
+                    <TableCell
+                      className="max-w-md whitespace-normal break-words"
+                      title={item.headline}
+                    >
+                      {item.headline}
+                      {hasUrl && (
+                        <span className="ml-2 text-xs text-primary underline">
+                          {/* tiny affordance to hint it's clickable */}
+                          {german ? "öffnet Landingpage" : "opens landing page"}
+                        </span>
+                      )}
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge className={getGravityColor(item.gravity)}>
+                        {FormatNumber(item.gravity) || "0"}
+                      </Badge>
+                    </TableCell>
+
+                    <TableCell>
+                      <Badge className={getStrengthColor(item.strength)}>
+                        {FormatNumber(item.strength) || "0"}
+                      </Badge>
+                    </TableCell>
+
+                    <TableCell>{item.network || "Unknown"}</TableCell>
+                    <TableCell>{item.duration ? `${item.duration} days` : "0"}</TableCell>
+
+                    <TableCell>
+                      <SelectButton
+                        headline={item.headline}
+                        sourceTable="anstrex_data"
+                        sourceId={item.id}
+                        region={region}
+                        brand={item.brand || undefined}
+                        isSelected={isRowSelected(item.id)}
+                        onSelectionChange={refetchSelected}
+                        // mark this as "don't trigger row click"
+                        data-stop-row
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           
           <div className="mt-6 text-center">
             <Button onClick={fetchAnstrexData}>
-              Refresh Data
+              {german ? 'Daten aktualisieren' : 'Refresh Data'}
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }

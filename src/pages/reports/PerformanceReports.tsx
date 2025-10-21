@@ -7,6 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { supabase } from "@/integrations/supabase/client"
 import { FileDown, Mail, Plus, X } from "lucide-react"
 import LoadingSpinner from "@/components/LoadingSpinner"
+import { FormatNumber } from "@/utils/FormatNumber"
+import { useRegion } from "@/hooks/useRegion"
 
 interface AIHeadlineTest {
   id: string
@@ -29,9 +31,9 @@ interface TopImage {
 }
 
 interface AnstrexItem {
-  Brand: string | null
-  Headline: string
-  Strength: number | null
+  brand: string | null
+  headline: string
+  strength: number | null
 }
 
 interface AdItem {
@@ -44,6 +46,8 @@ interface AdItem {
 export default function PerformanceReports() {
   const [week, setWeek] = useState<number | null>(null)
   const [weeks, setWeeks] = useState<number[]>([])
+  const [year, setYear] = useState<number | null>(null)
+  const [years, setYears] = useState<number[]>([])
 
   const [topAIHeads, setTopAIHeads] = useState<TopAIHead[]>([])
   const [topImgs, setTopImgs] = useState<TopImage[]>([])
@@ -55,26 +59,53 @@ export default function PerformanceReports() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchWeeks = async () => {
-    const { data, error } = await supabase
-      .from('Anstrex Data')
-      .select('Week')
-      .not('Week', 'is', null)
-    if (error) console.error(error)
-    const unique = Array.from(new Set(data?.map(r => r.Week).filter(w => w != null))) as number[]
-    unique.sort((a, b) => b - a)
-    setWeeks(unique)
-    if (!week && unique.length) setWeek(unique[0])
+  const { region } = useRegion()
+  const german = region == 'DE'
+
+  const fetchWeekYearOptions = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('topWeeklyHeadlines')
+        .select('week, year')
+        .eq('region', region)
+        .not('year', 'is', null)
+        .not('week', 'is', null)
+      if (error) throw error
+      
+      const yearSet = new Set<number>()
+      const weekSet = new Set<number>()
+
+      data?.forEach(({year, week}) => {
+        yearSet.add(year)
+        weekSet.add(week)
+      })
+
+      const sortedYears = Array.from(yearSet).sort((a, b) => b - a)
+      const sortedWeeks = Array.from(weekSet).sort((a, b) => b - a)
+
+      setYears(sortedYears)
+      setWeeks(sortedWeeks)
+
+      if (!year && sortedYears.length) setYear(sortedYears[0])
+      if (!week && sortedWeeks.length) setWeek(sortedWeeks[0])
+  } catch (err) { 
+    console.error(err)
+    }
   }
 
   const fetchData = async () => {
-    if (week === null) return
+    if (week === null || year === null) {
+    setLoading(false)
+    return
+  }
     setLoading(true)
     try {
       const { data: aiData, error: aiErr } = await supabase
         .from('topWeeklyAIHeadlines')
         .select('headline, ai_headline, frequency')
         .eq('week', week)
+        .eq('year', year)
+        .eq('region', region)
         .order('frequency', { ascending: false })
         .limit(20)
       if (aiErr) throw aiErr
@@ -84,6 +115,8 @@ export default function PerformanceReports() {
         .from('topWeeklyImages')
         .select('source_id, image_url, frequency')
         .eq('week', week)
+        .eq('year', year)
+        .eq('region', region)
         .order('frequency', { ascending: false })
         .limit(20)
       if (imgErr) throw imgErr
@@ -91,14 +124,16 @@ export default function PerformanceReports() {
 
       const { data: anData, error: anErr } = await supabase
         .from('Anstrex Data')
-        .select('Brand, Headline, Strength, Length')
-        .eq('Week', week)
-        .not('Strength', 'is', null)
-        .filter('Length', 'gt', '35')
-        .not('Headline', 'like', '%&%')
-        .not('Headline', 'like', '%/%')
-        .not('Headline', 'like', '%\\%%')
-        .order('Strength', { ascending: false })
+        .select('brand, headline, strength, length')
+        .eq('week', week)
+        .eq('year', year)
+        .eq('region', region)
+        .not('strength', 'is', null)
+        .filter('length', 'gt', '35')
+        .not('headline', 'like', '%&%')
+        .not('headline', 'like', '%/%')
+        .not('headline', 'like', '%\\%%')
+        .order('strength', { ascending: false })
         .limit(20)
       if (anErr) throw anErr
       setTopAnstrex(anData || [])
@@ -107,6 +142,8 @@ export default function PerformanceReports() {
         .from('topWeeklyAds')
         .select('headline, brand, image_url, frequency')
         .eq('week', week)
+        .eq('year', year)
+        .eq('region', region)
         .order('frequency', { ascending: false })
         .limit(10)
 
@@ -120,21 +157,35 @@ export default function PerformanceReports() {
     }
   }
 
-  useEffect(() => { fetchWeeks() }, [])
-  useEffect(() => { fetchData() }, [week])
+  useEffect(() => { fetchWeekYearOptions() }, [region])
+  useEffect(() => { fetchData() }, [region, week, year])
 
   if (loading) return <LoadingSpinner />
   if (error) return <div className="p-6 text-red-600">Error: {error}</div>
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#ffffff]">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Weekly Scraping Report</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{german ? 'Wöchentlicher Scraping-Bericht' : 'Weekly Scraping Report'}</h1>
         <div className="flex gap-2">
-          <Select value={week?.toString() || ''} onValueChange={v => setWeek(+v)}>
-            <SelectTrigger className="w-24"><SelectValue placeholder="Week"/></SelectTrigger>
+          <Select value={year?.toString() || ''} onValueChange={v => setYear(Number(v))}>
+            <SelectTrigger className="w-24">
+              <SelectValue placeholder="Year" />
+            </SelectTrigger>
             <SelectContent>
-              {weeks.map(w => <SelectItem key={w} value={w.toString()}>Week {w}</SelectItem>)}
+              {years.map(y=> (
+                <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={week?.toString() || ''} onValueChange={v => setWeek(Number(v))}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Week" />
+            </SelectTrigger>
+            <SelectContent>
+              {weeks.map(w => (
+                <SelectItem key={w} value={w.toString()}>{german ? 'Woche' : 'Week' } {w}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           
@@ -143,14 +194,14 @@ export default function PerformanceReports() {
 
       {/* Top Headlines & AI */}
       <div ref={reportRef} className="space-y-6">
-        <Card>
-          <CardHeader><CardTitle>Top Headlines</CardTitle></CardHeader>
+        <div>
+          <CardHeader><CardTitle>{german ? 'Top-Schlagzeilen' : 'Top Headlines'}</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader><TableRow>
                 <TableHead>Original</TableHead>
-                <TableHead>AI</TableHead>
-                <TableHead>Freq</TableHead>
+                <TableHead>{german ? 'KI' : 'AI'}</TableHead>
+                <TableHead>{german ? 'Frequenz' : 'Freq'}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {topAIHeads.map((h, i) => (
@@ -163,11 +214,11 @@ export default function PerformanceReports() {
               </TableBody>
             </Table>
           </CardContent>
-        </Card>
+        </div>
 
         {/* Top Images 5-per-row */}
-        <Card>
-          <CardHeader><CardTitle>Top Images</CardTitle></CardHeader>
+        <div>
+          <CardHeader><CardTitle>{german ? 'Top Bilder' : 'Top Images'}</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
               {topImgs.map((img, i) => (
@@ -184,37 +235,37 @@ export default function PerformanceReports() {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </div>
 
         {/* Top Anstrex by Strength */}
-        <Card>
-          <CardHeader><CardTitle>Top 10 Anstrex by Strength</CardTitle></CardHeader>
+        <div>
+          <CardHeader><CardTitle>{german ? 'Top 10 Anstrex nach Stärke' : 'Top 10 Anstrex by Strength'}</CardTitle></CardHeader>
           <CardContent>
             <Table>
               <TableHeader><TableRow>
-                <TableHead>Rank</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Headline</TableHead>
-                <TableHead>Strength</TableHead>
+                <TableHead>{german ? 'Rang' : 'Rank'}</TableHead>
+                <TableHead>{german ? 'Marke' : 'Brand'}</TableHead>
+                <TableHead>{german ? 'Überschrift' : 'Headline'}</TableHead>
+                <TableHead>{german ? 'Stärke' : 'Strength'}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {topAnstrex.map((a, i) => (
                   <TableRow key={i}>
                     <TableCell>#{i+1}</TableCell>
-                    <TableCell>{a.Brand || '—'}</TableCell>
-                    <TableCell>{a.Headline}</TableCell>
-                    <TableCell>{a.Strength}</TableCell>
+                    <TableCell>{a.brand || '—'}</TableCell>
+                    <TableCell>{a.headline}</TableCell>
+                    <TableCell>{FormatNumber(a.strength)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </CardContent>
-        </Card>      
+        </div>      
 
         {/* Top Ads by Frequency */}
-        <Card>
+        <div>
           <CardHeader>
-            <CardTitle>Top Ads</CardTitle>
+            <CardTitle>{german ? 'Top-Anzeigen' : 'Top Ads'}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
@@ -230,13 +281,13 @@ export default function PerformanceReports() {
                     <div className="break-words" title={ad.headline || ''}>
                       {ad.headline || '—'}
                     </div>
-                    <div className="text-gray-500">Freq: {ad.frequency}</div>
+                    <div className="text-gray-500">{german ? 'Frequenz' : 'Freq'}: {ad.frequency}</div>
                   </div>
                 </div>
               ))}
             </div>
           </CardContent>
-        </Card>
+        </div>
       </div>
     </div>
   )

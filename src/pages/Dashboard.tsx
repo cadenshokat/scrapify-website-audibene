@@ -3,8 +3,11 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { supabase } from "@/integrations/supabase/client"
-import { Activity, Database, FileText, Image, TrendingUp, Users, Clock } from "lucide-react"
+import { Activity, Database, FileText, Image, TrendingUp, TableProperties, Clock } from "lucide-react"
+import { useRegion } from "@/hooks/useRegion"
 import LoadingSpinner from "@/components/LoadingSpinner"
+import { useAuth } from "@/hooks/useAuth"
+import { Separator } from "@/components/ui/separator"
 
 interface DashboardStats {
   totalScrapeData: number
@@ -55,23 +58,28 @@ const Dashboard = () => {
   })
   const [loading, setLoading] = useState(true)
   const [recentHeadlines, setRecentHeadlines] = useState<any[]>([])
+  const { region } = useRegion()
+  const german = region === 'DE'
+  const { session } = useAuth()
+  const user = session?.user.id
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
       
       const [scrapeData, anstrexData, topHeadlines, favorites] = await Promise.all([
-        supabase.from('Scrape Data').select('*', { count: 'exact' }),
-        supabase.from('Anstrex Data').select('*', { count: 'exact' }),
+        supabase.from('Scrape Data').select('*', { count: 'exact' }).eq('region', region),
+        supabase.from('Anstrex Data').select('*', { count: 'exact' }).eq('region', region),
         supabase.from('Top 20').select('*', { count: 'exact' }),
-        supabase.from('favorites').select('*', { count: 'exact' })
+        supabase.from('favorites').select('*', { count: 'exact' }).eq('user', user)
       ])
 
       const today = new Date().toISOString().split('T')[0]
       const { count: todayCount } = await supabase
         .from('Scrape Data')
         .select('*', { count: 'exact' })
-        .gte('Date', today)
+        .eq('region', region)
+        .gte('date', today)
 
       const { data: frequencyData } = await supabase
         .from('Top 20')
@@ -83,9 +91,10 @@ const Dashboard = () => {
 
       const { data: recentData } = await supabase
         .from('Scrape Data')
-        .select('Headline, Brand, Date, Platform')
-        .order('Date', { ascending: false })
-        .limit(10)
+        .select('headline, brand, date, platform')
+        .eq('region', region)
+        .order('date', { ascending: false })
+        .limit(20)
 
       setStats({
         totalScrapeData: scrapeData.count || 0,
@@ -113,27 +122,46 @@ const Dashboard = () => {
       const now = new Date()
       const { type, next } = calculateNextScrape(now)
 
-      if (type === "before" && next) {
-        const diff = next.getTime() - now.getTime()
-        const mins = String(Math.floor(diff / 60000)).padStart(2, "0")
-        const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0")
-        setCountdown({ label: "Scrapers start in", time: `${mins}:${secs}` })
+      if (region === 'US') {
+        if (type === "before" && next) {
+          const diff = next.getTime() - now.getTime()
+          const mins = String(Math.floor(diff / 60000)).padStart(2, "0")
+          const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0")
+          setCountdown({ label: "Scrapers start in", time: `${mins}:${secs}` })
+        }
+        else if (type === "after") {
+          setCountdown({ label: "All done for the day" })
+        }
+        else if (type === "running" && next) {
+          const diff = next.getTime() - now.getTime()
+          const mins = String(Math.floor(diff / 60000)).padStart(2, "0")
+          const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0")
+          setCountdown({ label: "Next scrape in", time: `${mins}:${secs}` })
+        }
       }
-      else if (type === "after") {
-        setCountdown({ label: "All done for the day" })
-      }
-      else if (type === "running" && next) {
-        const diff = next.getTime() - now.getTime()
-        const mins = String(Math.floor(diff / 60000)).padStart(2, "0")
-        const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0")
-        setCountdown({ label: "Next scrape in", time: `${mins}:${secs}` })
+      if (region === 'DE') {
+          if (type === "before" && next) {
+          const diff = next.getTime() - now.getTime()
+          const mins = String(Math.floor(diff / 60000)).padStart(2, "0")
+          const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0")
+          setCountdown({ label: "Die Scraper starten in", time: `${mins}:${secs}` })
+        }
+        else if (type === "after") {
+          setCountdown({ label: "Für heute ist alles erledigt" })
+        }
+        else if (type === "running" && next) {
+          const diff = next.getTime() - now.getTime()
+          const mins = String(Math.floor(diff / 60000)).padStart(2, "0")
+          const secs = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0")
+          setCountdown({ label: "Nächstes Kratzen in", time: `${mins}:${secs}` })
+        }
       }
     }
 
     tick()
     const interval = setInterval(tick, 1_000)
     return () => clearInterval(interval)
-  }, [])
+  }, [region])
 
   const getPlatformColor = (platform: string | null) => {
     if (!platform) return "bg-gray-100 text-gray-800"
@@ -149,88 +177,88 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData()
-  }, [])
+  }, [region])
 
   if (loading) return <LoadingSpinner />
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-[#ffffff] ">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-3xl font-bold text-gray-900 ml-2">{german ? 'Übersicht' : 'Dashboard'}</h1>
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
+      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-y-6">
+        <div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Scraped Ads</CardTitle>
+            <CardTitle className="text-sm font-medium">{german ? 'Gesamtzahl der gelöschten Anzeigen': 'Total Scraped Ads'}</CardTitle>
             <Database className="text-[#127846] h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalScrapeData.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              {stats.todaysScrapes} scraped today
+              {stats.todaysScrapes} {german ? 'Anzeigen heute gescraped': 'ads scraped today'}
             </p>
           </CardContent>
-        </Card>
-
-        <Card>
+        </div>
+        <Separator orientation="vertical" className="h-full"/>
+        <div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Anstrex Data</CardTitle>
-            <Activity className="text-[#127846] h-4 w-4" />
+            <TableProperties className="text-[#127846] h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalAnstrexData.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              High-performing ads
+              {german ? 'Anzeigen diese Woche gelöscht' : '75 ads scraped this week'}
             </p>
           </CardContent>
-        </Card>
-
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Top Headlines</CardTitle>
+            <CardTitle className="text-sm font-medium">{german ? 'Top-Schlagzeilen' : 'Top Headlines'}</CardTitle>
             <FileText className="text-[#127846] h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalTopHeadlines}</div>
             <p className="text-xs text-muted-foreground">
-              Avg frequency: {stats.avgFrequency}
+              {german ? 'Die wichtigsten Schlagzeilen der Woche' : 'Top weekly headlines'}
             </p>
           </CardContent>
-        </Card>
-
-        <Card>
+        </div>
+        
+        <div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Favorites</CardTitle>
+            <CardTitle className="text-sm font-medium">{german ? 'Favoriten' : 'Favorites'}</CardTitle>
             <TrendingUp className="text-[#127846] h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalFavorites}</div>
             <p className="text-xs text-muted-foreground">
-              Saved items
+              {german ? 'Bevorzugte Schlagzeilen' : 'Favorited headlines'}
             </p>
           </CardContent>
-        </Card>
-
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Today's Activity</CardTitle>
-            <Users className="text-[#127846] h-4 w-4" />
+            <CardTitle className="text-sm font-medium">{german ? 'Heutige Aktivität' : 'Today\'s Activity'}</CardTitle>
+            <Activity className="text-[#127846] h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.todaysScrapes}</div>
             <p className="text-xs text-muted-foreground">
-              New ads today
+              {german ? 'Heute gelöschte Anzeigen' : 'Scraped ads today'}
             </p>
           </CardContent>
-        </Card>
-
-        <Card>
+        </div>
+        <Separator orientation="vertical" />
+        <div>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Time Until Next Scrape</CardTitle>
+            <CardTitle className="text-sm font-medium">{german ? 'Zeit bis zum nächsten Scraping' : 'Time Until Next Scrape'}</CardTitle>
             <Clock className="text-[#127846] h-4 w-4" />
           </CardHeader>
           <CardContent>
@@ -243,33 +271,35 @@ const Dashboard = () => {
               <div className="text-2xl font-bold">{countdown.label}</div>
             )}
           </CardContent>
-        </Card>
+        </div>
       </div>
 
+      <Separator />
+
       {/* Recent Activity */}
-      <Card>
+      <div>
         <CardHeader>
-          <CardTitle>Recent Headlines</CardTitle>
+          <CardTitle>{german ? 'Aktuelle Schlagzeilen' : 'Recent Headlines'}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {recentHeadlines.map((headline, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+              <div key={index} className="flex items-center justify-between p-3 border bg-none rounded-lg shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex-1">
-                  <p className="font-medium text-sm">"{headline.Headline}"</p>
+                  <p className="font-medium text-sm">{german ?  `„${headline.headline}"` : `"${headline.headline}"`}</p>
                   <div className="flex items-center gap-2 mt-1">
-                    {headline.Brand && <Badge variant="outline">{headline.Brand}</Badge>}
-                    {headline.Platform && <Badge variant="secondary" className={getPlatformColor(headline.Platform)}>{headline.Platform}</Badge>}
+                    {headline.brand && <Badge variant="outline">{headline.brand}</Badge>}
+                    {headline.platform && <Badge variant="secondary" className={getPlatformColor(headline.platform)}>{headline.platform}</Badge>}
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {headline.Date ? new Date(headline.Date).toLocaleDateString() : 'N/A'}
+                  {headline.date ? new Date(headline.date).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
             ))}
           </div>
         </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }
